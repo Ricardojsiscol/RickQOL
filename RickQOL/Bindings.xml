@@ -1,0 +1,8 @@
+<Bindings>
+    <Binding name="RICKQOL_QUEST_LIST" header="RICKQOL" category="ADDONS">
+        RickQOL_ToggleQuestList()
+    </Binding>
+    <Binding name="RICKQOL_NEAREST_QUEST" category="ADDONS">
+        RickQOL_WaypointNearestQuest()
+    </Binding>
+</Bindings>

@@ -1,0 +1,16 @@
+## Interface: 16001
+## Title: RickQOL
+## Notes: Controller-friendly bags, quests and threat for WoW: Forever.
+## Author: Ricardo
+## Version: 0.1.0
+## SavedVariables: RickQOLDB
+## OptionalDeps: QuestieDB
+
+Core.lua
+Modules\Junk.lua
+Modules\Threat.lua
+Modules\QuestData.lua
+Modules\QuestPins.lua
+Modules\MinimapPins.lua
+Modules\QuestList.lua
+Modules\Bags.lua
