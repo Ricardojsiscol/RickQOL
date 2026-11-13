@@ -14,3 +14,4 @@ Modules\QuestPins.lua
 Modules\MinimapPins.lua
 Modules\QuestList.lua
 Modules\Bags.lua
+Modules\FormBars.lua

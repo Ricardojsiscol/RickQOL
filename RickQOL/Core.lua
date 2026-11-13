@@ -9,6 +9,7 @@ local DEFAULTS = {
     threat = { enabled = true, locked = true, point = { "CENTER", "CENTER", 0, -180 } },
     pins = { enabled = true, hideTrivial = false, showWorldEvents = false },
     bags = { enabled = true, compare = true },
+    formbars = { enabled = true, chars = {} }, -- chars[guid] = { forms = { [n] = { [pos] = slot } }, seeded = {} }
 }
 
 local function MergeDefaults(target, defaults)
@@ -84,12 +85,13 @@ local blockedWatch = CreateFrame("Frame")
 blockedWatch:RegisterEvent("ADDON_ACTION_BLOCKED")
 blockedWatch:RegisterEvent("ADDON_ACTION_FORBIDDEN")
 blockedWatch:SetScript("OnEvent", function(_, event, addon, func)
-    if addon ~= ADDON_NAME or not R.db then return end
+    if not R.db then return end -- every addon: the game sometimes blames a different name
     R.db.blocked = R.db.blocked or {}
     local list = R.db.blocked
     list[#list + 1] = {
         when = date("%H:%M:%S"),
         event = event,
+        addon = tostring(addon),
         func = tostring(func),
         inCombat = InCombatLockdown(),
         stack = debugstack(2, 12, 0),
