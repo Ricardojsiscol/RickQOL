@@ -12,8 +12,10 @@ local _, R = ...
 local QuestList = R:RegisterModule("quests", { help = "(opens the available quests list)" })
 
 local ROWS = 10
-local ROW_HEIGHT = 34
-local WIDTH = 440
+local ROW_HEIGHT = 40
+local WIDTH = 500
+local FONT_BUMP = 2 -- points added to Blizzard's font objects, for reading from the couch
+local DETAIL_HEIGHT = 76
 local CHAIN_LIMIT = 40 -- guard against loops in chain data
 
 -- Controller and keyboard keys -> actions.
@@ -111,9 +113,17 @@ end
 -- Window
 ----------------------------------------------------------------------------
 
+-- A font string in Blizzard's font, FONT_BUMP points larger.
+local function Text(parent, template)
+    local text = parent:CreateFontString(nil, "OVERLAY", template)
+    local font, size, flags = text:GetFont()
+    if font and size then text:SetFont(font, size + FONT_BUMP, flags) end
+    return text
+end
+
 function QuestList:CreateWindow()
     local frame = CreateFrame("Frame", "RickQOLQuestList", UIParent, "BasicFrameTemplateWithInset")
-    frame:SetSize(WIDTH, 120 + ROWS * ROW_HEIGHT + 90)
+    frame:SetSize(WIDTH, 120 + ROWS * ROW_HEIGHT + DETAIL_HEIGHT + 26)
     frame:SetPoint("CENTER")
     frame:SetFrameStrata("DIALOG")
     frame:SetMovable(true)
@@ -125,13 +135,13 @@ function QuestList:CreateWindow()
     frame:Hide()
     frame.TitleText:SetText("Available quests")
 
-    frame.zone = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    frame.zone = Text(frame, "GameFontNormalLarge")
     frame.zone:SetPoint("TOPLEFT", 16, -34)
 
-    frame.count = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    frame.count = Text(frame, "GameFontHighlightSmall")
     frame.count:SetPoint("TOPRIGHT", -16, -38)
 
-    frame.empty = frame:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+    frame.empty = Text(frame, "GameFontDisable")
     frame.empty:SetPoint("TOP", 0, -90)
     frame.empty:SetText("No quests to pick up here right now.")
 
@@ -149,20 +159,20 @@ function QuestList:CreateWindow()
         row.selected:SetVertexColor(1, 0.82, 0)
         row.selected:Hide()
 
-        row.title = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        row.title:SetPoint("TOPLEFT", 6, -3)
-        row.title:SetPoint("RIGHT", -70, 0)
+        row.title = Text(row, "GameFontNormal")
+        row.title:SetPoint("TOPLEFT", 6, -4)
+        row.title:SetPoint("RIGHT", -80, 0)
         row.title:SetJustifyH("LEFT")
         row.title:SetWordWrap(false)
 
-        row.sub = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        row.sub:SetPoint("BOTTOMLEFT", 6, 3)
-        row.sub:SetPoint("RIGHT", -70, 0)
+        row.sub = Text(row, "GameFontHighlightSmall")
+        row.sub:SetPoint("BOTTOMLEFT", 6, 4)
+        row.sub:SetPoint("RIGHT", -80, 0)
         row.sub:SetJustifyH("LEFT")
         row.sub:SetWordWrap(false)
         row.sub:SetTextColor(0.7, 0.7, 0.7)
 
-        row.distance = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.distance = Text(row, "GameFontHighlightSmall")
         row.distance:SetPoint("RIGHT", -6, 0)
 
         row:SetScript("OnClick", function(button)
@@ -177,15 +187,15 @@ function QuestList:CreateWindow()
     end
 
     -- Details of the selected quest.
-    local detail = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local detail = Text(frame, "GameFontHighlightSmall")
     detail:SetPoint("TOPLEFT", 18, -66 - ROWS * ROW_HEIGHT)
     detail:SetPoint("RIGHT", -18, 0)
     detail:SetJustifyH("LEFT")
     detail:SetJustifyV("TOP")
-    detail:SetHeight(64)
+    detail:SetHeight(DETAIL_HEIGHT)
     frame.detail = detail
 
-    frame.hints = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    frame.hints = Text(frame, "GameFontDisableSmall")
     frame.hints:SetPoint("BOTTOM", 0, 12)
     frame.hints:SetText("A: set waypoint     B: close     Y: sort by distance / level     LB / RB: page")
 
