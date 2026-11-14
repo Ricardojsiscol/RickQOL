@@ -204,13 +204,21 @@ local BIND = [[
 -- Draws group `...` expanded and the rest collapsed (and handles Blizzard's compact layout).
 local LAYOUT_SNIPPET = [[
     local group = ...
+    self:SetAttribute("layout-group", group)
     -- Blizzard's compact layout stacks every group in one spot and shows only the active one.
     local compact = self:GetAttribute("compact")
     for g = 1, #groups do
         if compact and g ~= group then groups[g]:Hide() else groups[g]:Show() end
     end
-    -- ...and Blizzard's live jump/back/... buttons would sit on top of the held LT/RT group.
-    if topRight then topRight:SetAlpha((compact and group ~= 1) and 0 or 1) end
+    -- Blizzard's live jump/back/... buttons never see LT/RT (we take them), so they'd stay expanded:
+    -- while LT/RT is held they're faded and our collapsed stand-ins take their place.
+    if topRight then
+        local useStandIns = group ~= 1
+        topRight:SetAlpha(useStandIns and 0 or 1)
+        for i = 1, #standins do
+            if useStandIns then standins[i]:Show() else standins[i]:Hide() end
+        end
+    end
     for i = 1, #layout do
         local frame = layout[i]
         local state = frame:GetAttribute("group") == group and "e" or "c"
@@ -500,30 +508,35 @@ local function SetLayout(frame, shape, index)
 end
 
 -- Blizzard-style art on a button-sized frame: drop shadow, empty-slot glyph, masked icon, border.
+-- The art lives on a plain (insecure) child frame, `frame.visual`, so it can shrink in combat while the
+-- secure frame itself stays put (see UpdateTargetingCollapse).
 local function Dress(frame, shape, index)
     local art = SHAPE_ART[shape]
-    local shadow = frame:CreateTexture(nil, "BACKGROUND", nil, -1)
+    local host = CreateFrame("Frame", nil, frame)
+    host:SetAllPoints()
+    frame.visual = host
+    local shadow = host:CreateTexture(nil, "BACKGROUND", nil, -1)
     shadow:SetAtlas(art.shadow)
     shadow:SetPoint("TOPLEFT", -4, 4)
     shadow:SetPoint("BOTTOMRIGHT", 4, -4)
 
     local emptySet = shape == "dpad" and EMPTY_ART.dpad or (IconSet() == "Shapes" and EMPTY_ART.faceShapes or EMPTY_ART.face)
-    frame.empty = frame:CreateTexture(nil, "BACKGROUND")
+    frame.empty = host:CreateTexture(nil, "BACKGROUND")
     frame.empty:SetAllPoints()
     frame.empty:SetAtlas(emptySet[index])
 
-    frame.icon = frame:CreateTexture(nil, "ARTWORK")
+    frame.icon = host:CreateTexture(nil, "ARTWORK")
     frame.icon:SetAllPoints()
-    local mask = frame:CreateMaskTexture()
+    local mask = host:CreateMaskTexture()
     mask:SetAtlas(art.mask)
     mask:SetAllPoints(frame.icon)
     frame.icon:AddMaskTexture(mask)
 
-    frame.border = frame:CreateTexture(nil, "OVERLAY")
+    frame.border = host:CreateTexture(nil, "OVERLAY")
     frame.border:SetAllPoints()
     frame.border:SetAtlas(art.normal)
 
-    frame.checked = frame:CreateTexture(nil, "OVERLAY", nil, 1)
+    frame.checked = host:CreateTexture(nil, "OVERLAY", nil, 1)
     frame.checked:SetPoint("TOPLEFT", -4, 4)
     frame.checked:SetPoint("BOTTOMRIGHT", 4, -4)
     frame.checked:SetAtlas(art.checked)
@@ -531,7 +544,7 @@ local function Dress(frame, shape, index)
     frame.art = art
 
     -- Marks the button picked up in edit mode.
-    frame.selected = frame:CreateTexture(nil, "OVERLAY", nil, 2)
+    frame.selected = host:CreateTexture(nil, "OVERLAY", nil, 2)
     frame.selected:SetPoint("TOPLEFT", -6, 6)
     frame.selected:SetPoint("BOTTOMRIGHT", 6, -6)
     frame.selected:SetAtlas(art.checked)
@@ -553,10 +566,10 @@ function FormBars:CreateButton(info, parent)
     button:SetHighlightAtlas(SHAPE_ART[shape].highlight)
     button:SetPushedAtlas(SHAPE_ART[shape].pushed)
 
-    button.cooldown = CreateFrame("Cooldown", nil, button, "CooldownFrameTemplate")
+    button.cooldown = CreateFrame("Cooldown", nil, button.visual, "CooldownFrameTemplate")
     button.cooldown:SetAllPoints()
     if shape == "face" then button.cooldown:SetSwipeTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask") end
-    button.count = button:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+    button.count = button.visual:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
     button.count:SetPoint("BOTTOMRIGHT", -2, 2)
 
     -- Insecure scripts only on things the secure click doesn't run through.
@@ -720,7 +733,11 @@ function FormBars:CreateHeader()
             buttons[i] = self:GetFrameRef("button" .. i)
             layout[i] = buttons[i]
         end
-        for i = 1, 4 do layout[#layout + 1] = self:GetFrameRef("standin" .. i) end
+        standins = newtable()
+        for i = 1, 4 do
+            standins[i] = self:GetFrameRef("standin" .. i)
+            layout[#layout + 1] = standins[i]
+        end
         groups = newtable()
         for i = 1, 4 do groups[i] = self:GetFrameRef("group" .. i) end
         faded = newtable()
@@ -979,12 +996,85 @@ function FormBars:WatchFocus()
     end)
 end
 
+-- Blizzard collapses every group while a targeting modifier (RB hostile / LB friendly) is held, once its
+-- short visual delay has passed. Our secure buttons can't move in combat, so only their art shrinks:
+-- each expanded button's `visual` is drawn at its collapsed size and spot.
+local function TargetingActive()
+    local mode = rawget(_G, "GamepadMode")
+    if not (mode and mode.HasTargetingModifierVisualState) then return false end
+    local ok, active = pcall(mode.HasTargetingModifierVisualState)
+    return ok and active == true
+end
+
+local function PlaceVisual(frame, collapse)
+    local visual = frame.visual
+    if not visual then return end
+    visual:ClearAllPoints()
+    if not collapse then
+        visual:SetAllPoints()
+        return
+    end
+    local size = frame:GetAttribute("cs")
+    visual:SetPoint("CENTER", frame, "CENTER",
+        frame:GetAttribute("cx") - frame:GetAttribute("ex"), frame:GetAttribute("cy") - frame:GetAttribute("ey"))
+    visual:SetSize(size, size)
+end
+
+function FormBars:UpdateTargetingCollapse()
+    local collapse = self.header:IsShown() and TargetingActive()
+    local group = collapse and self.header:GetAttribute("layout-group") or 0
+    if group == self.collapsedGroup then return end
+    self.collapsedGroup = group
+    for _, list in ipairs({ self.buttons, self.standIns }) do
+        for _, frame in ipairs(list) do
+            PlaceVisual(frame, group ~= 0 and frame:GetAttribute("group") == group)
+        end
+    end
+end
+
+-- Stand-ins show what Blizzard's top face buttons currently show (interact / inspect icons change).
+function FormBars:SyncStandIns()
+    for index, standIn in ipairs(self.standIns) do
+        if standIn:IsVisible() then
+            local source = BlizzardButton({ bar = "topBar", side = "Right", index = index })
+            local icon = source and source.SpecialActionIcon
+            if icon and icon:IsShown() then
+                local atlas = icon:GetAtlas()
+                if atlas then
+                    standIn.icon:SetAtlas(atlas)
+                else
+                    standIn.icon:SetTexture(icon:GetTexture())
+                    standIn.icon:SetTexCoord(icon:GetTexCoord())
+                end
+                standIn.icon:Show()
+                standIn.empty:Hide()
+            elseif not TOP_FACE_ART[index] then
+                standIn.icon:Hide()
+                standIn.empty:Show()
+            end
+        end
+    end
+end
+
+function FormBars:WatchTargeting()
+    self.collapsedGroup = 0
+    local elapsed = 0
+    CreateFrame("Frame"):SetScript("OnUpdate", function(_, delta)
+        self:UpdateTargetingCollapse()
+        elapsed = elapsed + delta
+        if elapsed < 0.1 then return end
+        elapsed = 0
+        pcall(self.SyncStandIns, self)
+    end)
+end
+
 function FormBars:OnLogin(db)
     self.db = db
     R.db.probe = nil -- leftovers from the feasibility probe
     self:CreateHeader()
     self:CreateAssign()
     self:WatchFocus()
+    self:WatchTargeting()
 
     local events = CreateFrame("Frame")
     for _, event in ipairs({
